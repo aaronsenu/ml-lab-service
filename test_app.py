@@ -9,18 +9,25 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
-# Patch the heavy model loading before importing app
 mock_prediction = [{"label": "POSITIVE", "score": 0.99}]
+mock_classifier = MagicMock(return_value=mock_prediction)
 
-with patch("transformers.pipeline", return_value=lambda text: mock_prediction):
-    from app import app as flask_app
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-API-Key": "mysecretkey123"
+}
 
 
 @pytest.fixture
 def client():
-    flask_app.config["TESTING"] = True
-    with flask_app.test_client() as c:
-        yield c
+    with patch("transformers.pipeline", return_value=mock_classifier):
+        import importlib
+        import app as app_module
+        importlib.reload(app_module)
+        app_module.classifier = mock_classifier
+        app_module.app.config["TESTING"] = True
+        with app_module.app.test_client() as c:
+            yield c
 
 
 # ── /health ───────────────────────────────────────────────────────────────────
@@ -31,7 +38,7 @@ def test_health_returns_200(client):
 
 
 def test_health_returns_ok_status(client):
-    data = json.loads(response := client.get("/health").data)
+    data = json.loads(client.get("/health").data)
     assert data["status"] == "ok"
 
 
@@ -41,7 +48,7 @@ def test_predict_returns_200_with_valid_input(client):
     response = client.post(
         "/predict",
         data=json.dumps({"text": "I love this!"}),
-        content_type="application/json"
+        headers=HEADERS
     )
     assert response.status_code == 200
 
@@ -50,7 +57,7 @@ def test_predict_response_contains_required_fields(client):
     response = client.post(
         "/predict",
         data=json.dumps({"text": "Great product"}),
-        content_type="application/json"
+        headers=HEADERS
     )
     data = json.loads(response.data)
     assert "input" in data
@@ -59,7 +66,7 @@ def test_predict_response_contains_required_fields(client):
 
 
 def test_predict_returns_400_with_no_body(client):
-    response = client.post("/predict", content_type="application/json")
+    response = client.post("/predict", headers=HEADERS)
     assert response.status_code == 400
 
 
@@ -67,7 +74,7 @@ def test_predict_returns_400_with_missing_text_key(client):
     response = client.post(
         "/predict",
         data=json.dumps({"wrong_key": "hello"}),
-        content_type="application/json"
+        headers=HEADERS
     )
     assert response.status_code == 400
 
@@ -77,7 +84,16 @@ def test_predict_echoes_input_text(client):
     response = client.post(
         "/predict",
         data=json.dumps({"text": text}),
-        content_type="application/json"
+        headers=HEADERS
     )
     data = json.loads(response.data)
     assert data["input"] == text
+
+
+def test_predict_returns_401_without_api_key(client):
+    response = client.post(
+        "/predict",
+        data=json.dumps({"text": "hello"}),
+        content_type="application/json"
+    )
+    assert response.status_code == 401
