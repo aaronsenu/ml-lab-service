@@ -1,0 +1,16 @@
+# Lab 1 / Flask serving
+flask
+transformers
+torch --extra-index-url https://download.pytorch.org/whl/cpu
+python-dotenv
+
+# Lab 2 / Segmentation training
+segmentation-models-pytorch
+torchvision
+numpy
+pillow
+matplotlib
+scikit-learn
+tqdm
+albumentations
+opencv-python-headless
